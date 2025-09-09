@@ -1,3 +1,4 @@
+"""
 # Day 2: Printing, Variables, Input --
 
 # Print = make the program talk
@@ -30,4 +31,31 @@ else:
     favorite_food = input("What's your favorite food?")
     print(f"Alright {user_name}, I know you like {favorite_drink} and {favorite_food}. Cool!")
 
-    print(" Day 2 complete. Tomorrow I'll get smarter")
+    print(" Day 2 complete. Tomorrow I'll get smarter") 
+    """
+    
+# --- Day 3: If/Else and Loops ---
+
+print("Hi, I'm Senior AI Buddy! Type 'quit' anytime to exit.\n")
+
+# Keep chatting until user types 'quit'
+
+while True:
+    user_input = input("You: ")
+    
+    # Check for exit condition
+    if user_input.strip().lower() == "quit":
+        print("Buddy: Goodbye for now! Stay safe.")
+        break
+    
+    # Simple if/else responses
+    elif "hello" in user_input.lower():
+        print("Buddy: Hello there! How's you day going?")
+    elif "nameste" in user_input.lower():
+        print("Buddy: Nameste I'm happy to chat with you.")
+    elif "tea" in user_input.lower():
+        print("Buddy: Ah, tea is alwaus a good choice.")
+    elif "coffee" in user_input.lower():
+        print("Buddy: Coffee will keep you energized!")
+    else:
+        print("Buddy: Hmm, I don't fully understand, but I'm learning!")
