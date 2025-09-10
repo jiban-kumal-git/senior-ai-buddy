@@ -34,6 +34,7 @@ else:
     print(" Day 2 complete. Tomorrow I'll get smarter") 
     """
     
+""""
 # --- Day 3: If/Else and Loops ---
 
 print("Hi, I'm Senior AI Buddy! Type 'quit' anytime to exit.\n")
@@ -59,3 +60,40 @@ while True:
         print("Buddy: Coffee will keep you energized!")
     else:
         print("Buddy: Hmm, I don't fully understand, but I'm learning!")
+        """
+  
+    
+# --- Day 4: Functions in Chatbot ---
+
+print("Hi, I'm Senior AI Buddy! Type 'quite' anytime to exit.\n")
+
+# 1) Define a function for bot responses
+def get_response(user_input):
+    # Decides how the bot should reply based on user input.
+    user_input = user_input.strip().lower()
+    
+    if user_input == "quite":
+        return "quite" # special code to exit
+    elif "hello" in user_input:
+        return "Hello there! How's your day going?"
+    elif "nameste" in user_input:
+        return "Nameste! I'm happy to chat with you."
+    elif "tea" in user_input:
+        return "Ah, tea is always a good choice."
+    elif "coffee" in user_input:
+        return "Coffee will keep you energized!"
+    elif "bye" in user_input:
+        return "Bye, my friend. Talk soon!"
+    else:
+        return "Hmm, I don't fully understand, but I'm learning!"
+    
+    # 2) Chat loop using the function
+while True:
+    user_input = input("You: ")
+    response = get_response(user_input)
+    
+    if response == "quite":
+        print("Buddy: Goodbye for now! Stay safe.")
+        break
+    else:
+        print("Buddy:", response)
