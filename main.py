@@ -98,6 +98,7 @@ while True:
     else:
         print("Buddy:", response)
         '''
+'''
 # --- Day 5: Adding Memory (variables that last while chatting) ---
 
 print("Hi, I'm senior AI Buddy! Type 'quit' anytime to exit.\n")
@@ -107,7 +108,7 @@ user_name = None
 favorite_drink = None
 
 def get_response(user_input):
-    '''Decides how the bot should reply based on user input.'''
+    # Decides how the bot should reply based on user input.
     global user_name, favorite_drink  # use the memory variables
 
     user_input = user_input.strip().lower()
@@ -155,7 +156,100 @@ while True:
     else:
         print("Buddy:", response)
 
+'''
 
+# --- Day 6: Persistent Memory with JSON file ---
 
+from modules.memory import load_profile,save_profile
 
+print("Hi, I'm Senior AI Buddy! Type 'quit' anytime to exit.\n")
+
+# Load memory from file (persist across runs)
+profile = load_profile()
+
+def get_response(user_input):
+    # Decides how the bot should reply based on user input.
+    global profile
+    text = user_input.strip()
+    
+    # Exit
+    if text.lower() == "quit":
+        return "quit"
+    
+    # Set name: "My name is Jiban"
+    if text.lower().strip().startswith("my name is"):
+        name = text[10:].strip().title()
+        profile["user_name"] = name
+        save_profile(profile)
+        return f"Nice to meet you, {name}! I'll remember your name."
+    
+    # Ask name: "What's my name"
+    if "what's my name" in text.lower() or "whats my name" in text.lower():
+        if profile["user_name"]:
+            return f"Your name is {profile['user_name']}, of course!"
+        else:
+            return "Hmm, I don't know your name yet."
         
+        # Set drink: "I like tea"
+    if text.lower().strip().startswith("i like"):
+        drink = text[6:].strip().lower()
+        profile["favorite_drink"] = drink
+        save_profile(profile)
+        return f"Cool! I'll remember you like {drink}."
+    
+    # Ask drink
+    if "what's my drink" in text.lower() or "whats my drink" in text.lower():
+        if profile.get("favorite_drink"):
+            return f"You like {profile['favorite_drink']}, don’t you? ☕" 
+        else:
+            return "You haven’t told me your favorite drink yet."
+        
+         # Set food: "I eat momo" OR "My favorite food is momo"
+    if text.lower().startswith("i eat"):
+        food = text[5:].strip()
+        profile["favorite_food"] = food
+        save_profile(profile)
+        return f"Yum! I'll remember you eat {food}."
+    if text.lower().startswith("my favorite food is"):
+        food = text[20:].strip()
+        profile["favorite_food"] = food
+        save_profile(profile)
+        return f"Got it! Favorite food: {food}. Saved. 🍽️"
+        
+        # Ask food
+    if "what's my food" in text.lower() or "whats my food" in text.lower():
+        if profile.get("favorite_food"):
+            return f"Your favorite food is {profile['favorite_food']}."
+        else:
+            return "You haven't told me your favorite food yet."
+        
+         # Forget commands
+    if text.lower() == "forget my name":
+        profile["name"] = None
+        save_profile(profile)
+        return "Okay, I've forgotten your name."
+    if text.lower() == "forget my drink":
+        profile["favorite_drink"] = None
+        save_profile(profile)
+        return "Okay, I've forgotten your favorite drink."
+    if text.lower() == "forget my food":
+        profile["favorite_food"] = None
+        save_profile(profile)
+        return "Okay, I've forgotten your favorite food."
+
+    # Default response (personalized if we know your name)
+    if profile.get("name"):
+        return f"I hear you, {profile['name']}. Tell me more!"
+    else:
+        return "Hmm, I don't fully understand yet, but I'm learning! 🤓"
+    
+    # --- Chat loop ---
+while True:
+    user_input = input("You: ")
+    response = get_response(user_input)
+
+    if response == "quit":
+        print("Buddy: Goodbye for now! 👋 Stay safe.")
+        break
+    else:
+        print("Buddy:", response)
