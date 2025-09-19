@@ -62,7 +62,7 @@ while True:
         print("Buddy: Hmm, I don't fully understand, but I'm learning!")
         """
   
-    
+'''   
 # --- Day 4: Functions in Chatbot ---
 
 print("Hi, I'm Senior AI Buddy! Type 'quite' anytime to exit.\n")
@@ -97,3 +97,65 @@ while True:
         break
     else:
         print("Buddy:", response)
+        '''
+# --- Day 5: Adding Memory (variables that last while chatting) ---
+
+print("Hi, I'm senior AI Buddy! Type 'quit' anytime to exit.\n")
+
+# Store memory in variables (start empty)
+user_name = None
+favorite_drink = None
+
+def get_response(user_input):
+    '''Decides how the bot should reply based on user input.'''
+    global user_name, favorite_drink  # use the memory variables
+
+    user_input = user_input.strip().lower()
+
+    if user_input.startswith("my name is"):
+        # Example: "My name is Jiban"
+        user_name = user_input.replace("my name is", "").strip().title()
+        return f"Nice to meet you, {user_name}! I'll remember your name."
+
+    elif user_input.startswith("i like"):
+        # Example: "I like tea"
+        favorite_drink = user_input.replace("i like", "").strip()
+        return f"Cool! I'll remember you like {favorite_drink}."
+
+    elif "what's my name" in user_input:
+        if user_name:
+            return f"Your name is {user_name}, of course!"
+        else:
+            return "Hmm, I don't know your name yet."
+
+    elif "what's my drink" in user_input:
+        if favorite_drink:
+            return f"You like {favorite_drink}, don’t you? ☕"
+        else:
+            return "You haven’t told me your favorite drink yet."
+
+    elif user_input == "quit":
+        return "quit"
+
+    # Default responses
+    if user_name:
+        return f"I hear you, {user_name}. I'm learning!"
+    else:
+        return "I'm learning! Tell me more about yourself."
+
+
+# --- Main chat loop ---
+while True:
+    user_input = input("You: ")
+    response = get_response(user_input)
+
+    if response == "quit":
+        print("Buddy: Goodbye for now! Stay safe.")
+        break
+    else:
+        print("Buddy:", response)
+
+
+
+
+        
