@@ -157,7 +157,7 @@ while True:
         print("Buddy:", response)
 
 '''
-
+'''
 # --- Day 6: Persistent Memory with JSON file ---
 
 from modules.memory import load_profile,save_profile
@@ -253,3 +253,131 @@ while True:
         break
     else:
         print("Buddy:", response)
+'''
+
+# --- Day 7: Milestone demo (friendly greeting + guided setup) ---
+
+from modules.memory import (
+    load_profile, save_profile,
+    get_name, set_name,
+    get_drink, set_drink,
+    get_food, set_food,
+    reset_profile
+)
+
+def greet(profile):
+    name = get_name(profile)
+    if name:
+        print(f" Hi {name}! I'm senior AI Buddy. Type 'help' for options. (type 'quit' to exit)\n")
+    else:
+        print("Hi! I'm Senior AI Buddy. I don't know your name yet.")
+        # Ask once and save
+        name = input("What should I call you?")
+        if name.strip():
+            set_name(profile,name)
+            print(f"Nice to meet you, {get_name(profile)}! I'll remember that.")
+        else:
+            print("No worries, we can set your name later. Type: My name is <YourName>")
+            
+def show_help():
+    print("""
+Commands you can try:
+  - My name is <YourName>
+  - I like <drink>              (e.g., I like tea)
+  - My favorite food is <food>  (e.g., My favorite food is momo)
+  - What's my name / drink / food
+  - profile                     (see what I know)
+  - reset my profile            (clear saved info)
+  - quit                        (exit)
+Also try natural chat like: hello, namaste, tea, coffee
+""")
+    
+def show_profile(profile):
+    print("—— Your Saved Profile ——")
+    print(f"Name:           {get_name(profile) or '—'}")
+    print(f"Favorite drink: {get_drink(profile) or '—'}")
+    print(f"Favorite food:  {get_food(profile) or '—'}")
+    print("-------------------------")    
+            
+def handle_text(profile, text: str):
+    t = text.strip()
+    low = t.lower()
+    
+    # Exit
+    if low == "quit":
+        return "quit", "Goodbye for now! 👋 Stay safe."
+    
+    # Help & profile
+    if low == "help":
+        show_help()
+        return None, None
+    if low == "profile":
+        show_profile(profile)
+        return None, None
+    if low == "reset my profile":
+        newp = reset_profile()
+        # Update the dict in place so reference stays valid
+        profile.clear(); profile.update(newp)
+        return None, "Okay, I reset your profile to defaults."
+    
+    # Setters
+    if low.startswith("my name is"):
+        set_name(profile, t[10:].strip())
+        return None, f"Nice to meet you, {get_name(profile)}! I’ll remember your name. 😊"
+
+    if low.startswith("i like"):
+        set_drink(profile, t[6:].strip())
+        return None, f"Cool! I’ll remember you like {get_drink(profile)}."
+
+    if low.startswith("my favorite food is"):
+        set_food(profile, t[20:].strip())
+        return None, f"Got it! Favorite food: {get_food(profile)}. Saved. 🍽️"
+
+    if low.startswith("i eat"):
+        set_food(profile, t[5:].strip())
+        return None, f"Yum! I’ll remember you eat {get_food(profile)}."
+
+    # Queries
+    if "what's my name" in low or "whats my name" in low:
+        name = get_name(profile)
+        return None, (f"Your name is {name}, of course! 😉" if name else "Hmm, I don’t know your name yet.")
+    if "what's my drink" in low or "whats my drink" in low:
+        drink = get_drink(profile)
+        return None, (f"You like {drink}, don’t you? ☕" if drink else "You haven’t told me your favorite drink yet.")
+    if "what's my food" in low or "whats my food" in low:
+        food = get_food(profile)
+        return None, (f"Your favorite food is {food}." if food else "You haven’t told me your favorite food yet.")
+
+    # Friendly small talk
+    if "hello" in low:
+        name = get_name(profile)
+        return None, (f"Hello, {name}! How’s your day going?" if name else "Hello there! How’s your day going?")
+    if "namaste" in low:
+        name = get_name(profile)
+        return None, (f"Namaste, {name}! 🙏 I’m happy to chat with you." if name else "Namaste 🙏 I’m happy to chat with you.")
+    if "tea" in low:
+        return None, "Ah, tea ☕ is always a good choice."
+    if "coffee" in low:
+        return None, "Coffee ☕ will keep you energized!"
+
+    # Default fallback (personalized if possible)
+    name = get_name(profile)
+    if name:
+        return None, f"I hear you, {name}. Tell me more!"
+    return None, "Hmm, I don’t fully understand yet, but I’m learning! 🤓"
+
+# ---------- Program starts here ----------
+print("Loading your profile...")
+profile = load_profile()
+greet(profile)
+
+while True:
+    user_input = input("You: ")
+    action, message = handle_text(profile, user_input)
+
+    if action == "quit":
+        print("Buddy:", message)
+        break
+
+    if message:
+        print("Buddy:", message)
