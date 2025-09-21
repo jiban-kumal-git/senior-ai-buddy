@@ -265,6 +265,9 @@ from modules.memory import (
     reset_profile
 )
 
+from modules.reminders import add_reminder, load_reminders, clear_reminders
+
+
 def greet(profile):
     name = get_name(profile)
     if name:
@@ -360,11 +363,35 @@ def handle_text(profile, text: str):
     if "coffee" in low:
         return None, "Coffee ☕ will keep you energized!"
 
+    # Reminders
+    if low.startswith("remind me to"):
+        task = t[11:].strip()
+        if task:
+            add_reminder(task)
+            return None, f"Okay, I’ll remind you to: {task} (saved)."
+        else:
+            return None, "Remind you to… what? Please say the task."
+
+    if low == "show reminders":
+        reminders = load_reminders()
+        if reminders:
+            msg = "Here are your reminders:\n"
+            for i, r in enumerate(reminders, start=1):
+                msg += f"  {i}. {r}\n"
+            return None, msg
+        else:
+            return None, "You don’t have any reminders yet."
+
+    if low == "clear reminders":
+        clear_reminders()
+        return None, "All reminders cleared."
+
+
     # Default fallback (personalized if possible)
     name = get_name(profile)
     if name:
         return None, f"I hear you, {name}. Tell me more!"
-    return None, "Hmm, I don’t fully understand yet, but I’m learning! 🤓"
+    return None, "Hmm, I don't fully understand yet, but I’m learning! 🤓"
 
 # ---------- Program starts here ----------
 print("Loading your profile...")
