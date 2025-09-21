@@ -265,8 +265,10 @@ from modules.memory import (
     reset_profile
 )
 
-from modules.reminders import add_reminder, load_reminders, clear_reminders
-
+from modules.reminders import (
+    add_text_reminder, add_timed_reminder,
+    load_reminders, clear_reminders, reminder_checker
+)
 
 def greet(profile):
     name = get_name(profile)
@@ -285,14 +287,27 @@ def greet(profile):
 def show_help():
     print("""
 Commands you can try:
-  - My name is <YourName>
-  - I like <drink>              (e.g., I like tea)
-  - My favorite food is <food>  (e.g., My favorite food is momo)
-  - What's my name / drink / food
-  - profile                     (see what I know)
-  - reset my profile            (clear saved info)
-  - quit                        (exit)
-Also try natural chat like: hello, namaste, tea, coffee
+  Profile & Memory:
+    - My name is <YourName>
+    - I like <drink>              (e.g., I like tea)
+    - My favorite food is <food>  (e.g., My favorite food is momo)
+    - What's my name / drink / food
+    - profile
+    - reset my profile
+
+  Reminders (basic):
+    - remind me to <task>
+    - show reminders
+    - clear reminders
+
+  Timed reminders (new today):
+    - remind me in 10 seconds to <task>
+    - remind me in 2 minutes to <task>
+
+  Other:
+    - hello / namaste / tea / coffee
+    - help
+    - quit
 """)
     
 def show_profile(profile):
@@ -300,7 +315,21 @@ def show_profile(profile):
     print(f"Name:           {get_name(profile) or '—'}")
     print(f"Favorite drink: {get_drink(profile) or '—'}")
     print(f"Favorite food:  {get_food(profile) or '—'}")
-    print("-------------------------")    
+    print("-------------------------")
+    
+def render_reminders():
+    items = load_reminders()
+    if not items:
+        return "You don't have any reminders yet."
+    lines = ["Here are your reminders:"]
+    for i, r in enumerate(items, start=1):
+        task = r.get("task", "")
+        when = r.get("remind_at")
+        if when:
+            lines.append(f"  {i}. {task}  (at {when})")
+        else:
+            lines.append(f"  {i}. {task}")
+    return "\n".join(lines)    
             
 def handle_text(profile, text: str):
     t = text.strip()
@@ -343,59 +372,92 @@ def handle_text(profile, text: str):
     # Queries
     if "what's my name" in low or "whats my name" in low:
         name = get_name(profile)
-        return None, (f"Your name is {name}, of course! 😉" if name else "Hmm, I don’t know your name yet.")
+        return None, (f"Your name is {name}, of course! 😉" if name else "Hmm, I don't know your name yet.")
     if "what's my drink" in low or "whats my drink" in low:
         drink = get_drink(profile)
-        return None, (f"You like {drink}, don’t you? ☕" if drink else "You haven’t told me your favorite drink yet.")
+        return None, (f"You like {drink}, don't you? ☕" if drink else "You haven't told me your favorite drink yet.")
     if "what's my food" in low or "whats my food" in low:
         food = get_food(profile)
-        return None, (f"Your favorite food is {food}." if food else "You haven’t told me your favorite food yet.")
+        return None, (f"Your favorite food is {food}." if food else "You haven't told me your favorite food yet.")
+    
+     # ---------------- Reminders (Day 8 + Day 9) ----------------
+     
+     # Timed reminders: "remind me in 10 seconds to drink water" / "remind me in 2 minutes to stretch"
+    if low.startswith("remind me in"):
+        # Try to parse: "remind me in <number> <unit> to <task>"
+        # Split only the first 5 chunks so task can contain spaces
+        parts = t.split(" ", 4)  # e.g., ["remind","me","in","10","seconds to drink water"]
+        if len(parts) < 5:
+            return None, "Try: remind me in 10 seconds to drink water"
 
-    # Friendly small talk
-    if "hello" in low:
-        name = get_name(profile)
-        return None, (f"Hello, {name}! How’s your day going?" if name else "Hello there! How’s your day going?")
-    if "namaste" in low:
-        name = get_name(profile)
-        return None, (f"Namaste, {name}! 🙏 I’m happy to chat with you." if name else "Namaste 🙏 I’m happy to chat with you.")
-    if "tea" in low:
-        return None, "Ah, tea ☕ is always a good choice."
-    if "coffee" in low:
-        return None, "Coffee ☕ will keep you energized!"
+        number_str = parts[3].strip()
+        rest = parts[4]  # e.g., "seconds to drink water"
+        try:
+            number = int(number_str)
+        except ValueError:
+            return None, "Please give a number, e.g., 10 seconds or 2 minutes."
 
-    # Reminders
+        rest_low = rest.lower()
+        if "second" in rest_low:
+            task = rest_low.replace("seconds", "").replace("second", "").replace("to", "", 1).strip()
+            if not task:
+                return None, "Remind you to… what? Please say the task."
+            remind_at = add_timed_reminder(task, number)
+            return None, f"Okay! I’ll remind you at {remind_at} to: {task}"
+        elif "minute" in rest_low:
+            task = rest_low.replace("minutes", "").replace("minute", "").replace("to", "", 1).strip()
+            if not task:
+                return None, "Remind you to… what? Please say the task."
+            remind_at = add_timed_reminder(task, number * 60)
+            return None, f"Okay! I’ll remind you at {remind_at} to: {task}"
+        else:
+            return None, "Please specify seconds or minutes. Example: remind me in 2 minutes to drink water"
+
+    # Simple reminders without time: "remind me to <task>"
     if low.startswith("remind me to"):
         task = t[11:].strip()
         if task:
-            add_reminder(task)
+            add_text_reminder(task)
             return None, f"Okay, I’ll remind you to: {task} (saved)."
         else:
             return None, "Remind you to… what? Please say the task."
 
+    # Show/Clear
     if low == "show reminders":
-        reminders = load_reminders()
-        if reminders:
-            msg = "Here are your reminders:\n"
-            for i, r in enumerate(reminders, start=1):
-                msg += f"  {i}. {r}\n"
-            return None, msg
-        else:
-            return None, "You don’t have any reminders yet."
-
+        return None, render_reminders()
     if low == "clear reminders":
         clear_reminders()
         return None, "All reminders cleared."
+
+    # ---------------- Friendly Small talk ----------------
+    if "hello" in low:
+        name = get_name(profile)
+        return None, (f"Hello, {name}! How's your day going?" if name else "Hello there! How’s your day going?")
+    if "namaste" in low:
+        name = get_name(profile)
+        return None, (f"Namaste, {name}! 🙏 I'm happy to chat with you." if name else "Namaste 🙏 I’m happy to chat with you.")
+    if "tea" in low:
+        return None, "Ah, tea ☕ is always a good choice."
+    if "coffee" in low:
+        return None, "Coffee ☕ will keep you energized!"
 
 
     # Default fallback (personalized if possible)
     name = get_name(profile)
     if name:
         return None, f"I hear you, {name}. Tell me more!"
-    return None, "Hmm, I don't fully understand yet, but I’m learning! 🤓"
+    return None, "Hmm, I don't fully understand yet, but I'm learning! 🤓"
 
 # ---------- Program starts here ----------
 print("Loading your profile...")
 profile = load_profile()
+
+#Start reminder background checker
+def on_reminder(task):
+    print(f"\n🔔 Reminder: {task}\nYou: ", end="" , flush=True)
+    
+reminder_checker(on_reminder)
+
 greet(profile)
 
 while True:
