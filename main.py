@@ -1,4 +1,4 @@
-# --- Day 10: Clock-time reminders (8:30 pm / 7 am / 19:30) ---
+# --- Day 11: Recurring reminders (daily/weekly) + everything from Day 7–10 ---
 
 from modules.memory import (
     load_profile, save_profile,
@@ -9,6 +9,7 @@ from modules.memory import (
 )
 from modules.reminders import (
     add_text_reminder, add_timed_reminder, add_clock_reminder,
+    add_daily_reminder, add_weekly_reminder,
     load_reminders, clear_reminders, reminder_checker
 )
 
@@ -50,6 +51,10 @@ Commands you can try:
     - remind me at 7 am to <task>
     - remind me at 19:45 to <task>
 
+  Recurring reminders (Day 11):
+    - remind me every day at 8 am to <task>
+    - remind me every monday at 7 pm to <task>
+
   Other:
     - hello / namaste / tea / coffee
     - help
@@ -71,7 +76,10 @@ def render_reminders():
     for i, r in enumerate(items, start=1):
         task = r.get("task", "")
         when = r.get("remind_at")
-        if when:
+        repeat = r.get("repeat")
+        if repeat:
+            lines.append(f"  {i}. {task}  (at {when}, repeat={repeat})")
+        elif when:
             lines.append(f"  {i}. {task}  (at {when})")
         else:
             lines.append(f"  {i}. {task}")
@@ -125,15 +133,56 @@ def handle_text(profile, text: str):
         food = get_food(profile)
         return None, (f"Your favorite food is {food}." if food else "You haven’t told me your favorite food yet.")
 
-    # ---------------- Reminders (Day 8/9/10) ----------------
+    # ---------------- Reminders (Day 8/9/10/11) ----------------
+
+    # Day 11: "remind me every day at <time> to <task>"
+    if low.startswith("remind me every day at"):
+        # remainder = "<time> to <task>"
+        parts = t.split(" ", 5)  # ['remind','me','every','day','at','<time> to <task>']
+        if len(parts) < 6:
+            return None, "Try: remind me every day at 8 am to take medicine"
+        remainder = parts[5].strip()
+        if " to " not in remainder.lower():
+            return None, "Use 'to' before the task. Example: remind me every day at 7 am to drink water"
+        time_part, task_part = remainder.split(" to ", 1)
+        time_str = time_part.strip()
+        task = task_part.strip()
+        if not task:
+            return None, "Remind you to… what? Please say the task."
+        try:
+            when = add_daily_reminder(task, time_str)
+            return None, f"Okay! I’ll remind you every day at {when[-8:]} to: {task}"
+        except Exception:
+            return None, "I couldn’t read that time. Try '8:30 pm', '7 am', or '19:45'."
+
+    # Day 11: "remind me every <weekday> at <time> to <task>"
+    if low.startswith("remind me every ") and " at " in low and " to " in low:
+        # Pattern: remind me every <weekday> at <time> to <task>
+        # Extract weekday
+        try:
+            after_every = t[16:]  # text after "remind me every "
+            # split into "<weekday> at <time> to <task>"
+            weekday, after_wd = after_every.split(" at ", 1)
+            if " to " not in after_wd.lower():
+                raise ValueError()
+            time_part, task_part = after_wd.split(" to ", 1)
+            weekday_name = weekday.strip().lower()
+            time_str = time_part.strip()
+            task = task_part.strip()
+            if not weekday_name or not time_str or not task:
+                raise ValueError()
+            when = add_weekly_reminder(task, weekday_name, time_str)
+            return None, f"Got it! I’ll remind you every {weekday_name.capitalize()} at {when[-8:]} to: {task}"
+        except Exception:
+            # Fall-through; maybe it didn't match this exact structure—keep trying other patterns
+            pass
 
     # Day 10: Clock-time -> "remind me at <time> to <task>"
     if low.startswith("remind me at"):
-        # Split only the first 4 chunks so the rest stays as "<time> to <task>"
         parts = t.split(" ", 3)  # ["remind","me","at","<time> to <task>"]
         if len(parts) < 4:
             return None, "Try: remind me at 8:30 pm to take medicine"
-        remainder = parts[3].strip()  # "<time> to <task>"
+        remainder = parts[3].strip()
         if " to " not in remainder.lower():
             return None, "Use 'to' before the task. Example: remind me at 7 am to drink water"
         time_part, task_part = remainder.split(" to ", 1)
@@ -145,7 +194,7 @@ def handle_text(profile, text: str):
             remind_at = add_clock_reminder(task, time_str)
             return None, f"Okay! I’ll remind you at {remind_at} to: {task}"
         except Exception:
-            return None, "I couldn’t read that time. Try formats like '8:30 pm', '7 am', or '19:45'."
+            return None, "I couldn’t read that time. Try '8:30 pm', '7 am', or '19:45'."
 
     # Day 9: Timed -> "remind me in <N> seconds/minutes to <task>"
     if low.startswith("remind me in"):
@@ -213,7 +262,7 @@ def handle_text(profile, text: str):
 print("Loading your profile...")
 profile = load_profile()
 
-# Background checker prints reminders when due
+# Background checker prints reminders when due (and auto-reschedules recurring ones)
 def on_reminder(task):
     print(f"\n⏰ Reminder: {task}\nYou: ", end="", flush=True)
 

@@ -1,14 +1,17 @@
 [
   {
     "task": "take medicine",
-    "remind_at": "2025-09-23 20:30:00"
+    "remind_at": "2025-09-24 08:00:00",
+    "repeat": "daily"
   },
   {
-    "task": "call Ram",
-    "remind_at": "2025-09-23 07:10:00"
+    "task": "call my daughter",
+    "remind_at": "2025-09-29 19:00:00",
+    "repeat": "weekly:Monday"
   },
   {
-    "task": "go for a walk",
-    "remind_at": "2025-09-23 07:00:00"
+    "task": "drink water",
+    "remind_at": "2025-09-24 20:30:00",
+    "repeat": null
   }
 ]
