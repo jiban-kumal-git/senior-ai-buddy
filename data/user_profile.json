@@ -1,5 +1,7 @@
 {
   "user_name": "Jiban",
   "favorite_drink": null,
-  "favorite_food": null
+  "favorite_food": null,
+  "voice_enabled": true,
+  "voice_rate": 170
 }

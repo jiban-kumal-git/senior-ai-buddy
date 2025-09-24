@@ -74,3 +74,32 @@ def reset_profile():
     fresh = DEFAULT_PROFILE.copy()
     save_profile(fresh)
     return fresh
+
+def get_voice_enabled(profile):
+    v = profile.get("voice_enabled")
+    if v is None:
+        profile["voice_enabled"] = True
+        save_profile(profile)
+        return True
+    return bool(v)
+
+def set_voice_enabled(profile, enabled: bool):
+    profile["voice_enabled"] = bool(enabled)
+    save_profile(profile)
+
+def get_voice_rate(profile):
+    r = profile.get("voice_rate")
+    if not isinstance(r, int):
+        profile["voice_rate"] = 170
+        save_profile(profile)
+        return 170
+    return r
+
+def set_voice_rate(profile, rate: int):
+    try:
+        r = int(rate)
+    except Exception:
+        r = 170
+    profile["voice_rate"] = max(100, min(250, r))  # clamp: 100–250
+    save_profile(profile)
+
