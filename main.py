@@ -21,6 +21,11 @@ from modules.voice import (
     list_voices, set_voice_by_name, beep
 )
 
+from modules.stt import (
+    transcribe_offline, transcribe_online, has_offline_model
+)
+
+
 def say(profile, text):
     """Print + speak if voice is enabled and engine available."""
     print("Buddy:", text)
@@ -30,9 +35,9 @@ def say(profile, text):
 def greet(profile):
     name = get_name(profile)
     if name:
-        hello = f"👋 Hi {name}! I'm Senior AI Buddy. Type 'help' for options. (type 'quit' to exit)\n"
+        hello = f" Hi {name}! I'm Senior AI Buddy. Type 'help' for options. (type 'quit' to exit)\n"
     else:
-        hello = "👋 Hi! I'm Senior AI Buddy. I don't know your name yet."
+        hello = " Hi! I'm Senior AI Buddy. I don't know your name yet."
     print(hello)
     if get_voice_enabled(profile) and is_available():
         speak(hello, rate=get_voice_rate(profile))
@@ -112,9 +117,52 @@ def handle_text(profile, text: str):
     t = text.strip()
     low = t.lower()
 
+    # ---- Speech-to-Text (Day 13) ----
+    # Offline push-to-talk (Vosk): "listen" or "listen 5"
+    if low.startswith("listen-online"):
+        parts = t.split()
+        secs = 5
+        if len(parts) >= 2:
+            try:
+                secs = max(2, min(30, int(parts[1])))
+            except Exception:
+                pass
+
+        print(f"(listening online for {secs}s...)")
+        said = transcribe_online(seconds=secs)
+        if not said:
+            return None, "I didn’t catch that (online). Try again or speak closer to the mic."
+        print(f"You (voice): {said}")
+        action2, msg2 = handle_text(profile, said)
+        if action2 == "quit":
+            return None, msg2
+        return None, msg2
+
+
+    # Online fallback (Google): "listen-online" or "listen-online 5"
+    if low.startswith("listen-online"):
+        parts = t.split()
+        secs = 5
+        if len(parts) >= 2:
+            try:
+                secs = max(2, min(30, int(parts[1])))
+            except Exception:
+                pass
+
+        print(f"(listening online for {secs}s...)")
+        said = transcribe_online(seconds=secs)
+        if not said:
+            return None, "I didn’t catch that (online). Try again or use 'listen 5' after installing the offline model."
+        print(f"You (voice): {said}")
+        action2, msg2 = handle_text(profile, said)
+        if action2 == "quit":
+            return None, msg2
+        return None, msg2
+
+
     # Exit
     if low == "quit":
-        return "quit", "Goodbye for now! 👋 Stay safe."
+        return "quit", "Goodbye for now! Stay safe."
 
     # Help & profile
     if low == "help":
@@ -324,11 +372,11 @@ def handle_text(profile, text: str):
         return None, (f"Hello, {name}! How's your day going?" if name else "Hello there! How's your day going?")
     if "namaste" in low:
         name = get_name(profile)
-        return None, (f"Namaste, {name}! 🙏 I'm happy to chat with you." if name else "Namaste 🙏 I'm happy to chat with you.")
+        return None, (f"Namaste, {name}! I'm happy to chat with you." if name else "Namaste 🙏 I'm happy to chat with you.")
     if "tea" in low:
-        return None, "Ah, tea ☕ is always a good choice."
+        return None, "Ah, tea is always a good choice."
     if "coffee" in low:
-        return None, "Coffee ☕ will keep you energized!"
+        return None, "Coffee will keep you energized!"
 
     # Default fallback
     name = get_name(profile)

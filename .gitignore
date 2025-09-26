@@ -1,10 +1,30 @@
-# Ignore Python bytecode files
+# Python junk
 __pycache__/
+*.pyc
+*.pyo
 
-
-# Ignore virtual environments
+# Virtual envs
+.venv/
 venv/
 
-# Ignore log files
-logs/
+# Local config / secrets
+.env
+
+# Audio temp files (Edge TTS playback)
+*.mp3
+*.wav
+
+# Logs
 *.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Runtime user data (optional: keep repo clean)
+data/*.json
+!data/.gitkeep
+
+# Offline models (Vosk, etc.)
+models/*
+!models/.gitkeep
