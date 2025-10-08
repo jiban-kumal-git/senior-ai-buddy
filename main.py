@@ -1,4 +1,4 @@
-# --- Day 12 (+ Day 7–11 features) with robust TTS worker and all reminders ---
+# --- Day 12 (+ Day 7–14 features) with robust TTS worker, STT, and Push-to-Talk ---
 
 from modules.memory import (
     load_profile, save_profile,
@@ -25,6 +25,9 @@ from modules.stt import (
     transcribe_offline, transcribe_online, has_offline_model
 )
 
+# ---- Global flags ----
+ptt_enabled = False
+
 
 def say(profile, text):
     """Print + speak if voice is enabled and engine available."""
@@ -32,12 +35,13 @@ def say(profile, text):
     if get_voice_enabled(profile) and is_available():
         speak(text, rate=get_voice_rate(profile))
 
+
 def greet(profile):
     name = get_name(profile)
     if name:
-        hello = f" Hi {name}! I'm Senior AI Buddy. Type 'help' for options. (type 'quit' to exit)\n"
+        hello = f"👋 Hi {name}! I'm Senior AI Buddy. Type 'help' for options. (type 'quit' to exit)\n"
     else:
-        hello = " Hi! I'm Senior AI Buddy. I don't know your name yet."
+        hello = "👋 Hi! I'm Senior AI Buddy. I don't know your name yet."
     print(hello)
     if get_voice_enabled(profile) and is_available():
         speak(hello, rate=get_voice_rate(profile))
@@ -49,6 +53,7 @@ def greet(profile):
             say(profile, f"Nice to meet you, {get_name(profile)}! I'll remember that. 😊")
         else:
             say(profile, "No worries, we can set your name later. Type: My name is <YourName>")
+
 
 def show_help():
     print("""
@@ -76,15 +81,23 @@ Commands you can try:
     - voice off
     - set voice rate 150          (range ~100-250)
     - list voices
-    - set voice zira              (try a substring of a voice name)
+    - set voice aria              (or zira/jenny/sara, etc.)
     - speak <anything>
     - beep
+
+  Speech-to-Text:
+    - listen-online 5             (record N seconds & transcribe)
+
+  Push-to-Talk:
+    - ptt on                      (then press Enter with empty input to talk 5s)
+    - ptt off
 
   Other:
     - hello / namaste / tea / coffee
     - help
     - quit
 """)
+
 
 def show_profile(profile):
     print("—— Your Saved Profile ——")
@@ -94,6 +107,7 @@ def show_profile(profile):
     print(f"Voice enabled:  {get_voice_enabled(profile)}")
     print(f"Voice rate:     {get_voice_rate(profile)}")
     print("-------------------------")
+
 
 def render_reminders():
     items = load_reminders()
@@ -112,13 +126,23 @@ def render_reminders():
             lines.append(f"  {i}. {task}")
     return "\n".join(lines)
 
+
 def handle_text(profile, text: str):
+    global ptt_enabled
+
     # Always keep these first!
     t = text.strip()
     low = t.lower()
 
-    # ---- Speech-to-Text (Day 13) ----
-    # Offline push-to-talk (Vosk): "listen" or "listen 5"
+    # ---- Push-to-Talk (Day 14) ----
+    if low == "ptt on":
+        ptt_enabled = True
+        return None, "Push-to-talk mode ENABLED. Just press Enter to speak."
+    if low == "ptt off":
+        ptt_enabled = False
+        return None, "Push-to-talk mode DISABLED."
+
+    # ---- Speech-to-Text (Day 13): ONLINE ----
     if low.startswith("listen-online"):
         parts = t.split()
         secs = 5
@@ -137,28 +161,6 @@ def handle_text(profile, text: str):
         if action2 == "quit":
             return None, msg2
         return None, msg2
-
-
-    # Online fallback (Google): "listen-online" or "listen-online 5"
-    if low.startswith("listen-online"):
-        parts = t.split()
-        secs = 5
-        if len(parts) >= 2:
-            try:
-                secs = max(2, min(30, int(parts[1])))
-            except Exception:
-                pass
-
-        print(f"(listening online for {secs}s...)")
-        said = transcribe_online(seconds=secs)
-        if not said:
-            return None, "I didn’t catch that (online). Try again or use 'listen 5' after installing the offline model."
-        print(f"You (voice): {said}")
-        action2, msg2 = handle_text(profile, said)
-        if action2 == "quit":
-            return None, msg2
-        return None, msg2
-
 
     # Exit
     if low == "quit":
@@ -195,18 +197,18 @@ def handle_text(profile, text: str):
             return None, "Please provide a number, e.g., set voice rate 170"
 
     if low == "list voices":
-        voices = list_voices()
+        voices = list_voices()  # Edge TTS: list of (ShortName, Locale, Gender)
         if not voices:
             return None, "No voices available."
         msg = ["Available voices:"]
-        for i, (vid, vname, langs) in enumerate(voices, start=1):
-            msg.append(f"  {i}. {vname}  (id={vid})")
+        for i, (short, locale, gender) in enumerate(voices, start=1):
+            msg.append(f"  {i}. {short}  [{locale}, {gender}]")
         return None, "\n".join(msg)
 
     if low.startswith("set voice "):
         target = t[10:].strip()
         if not target:
-            return None, "Please provide part of a voice name, e.g., set voice zira"
+            return None, "Please provide part of a voice name, e.g., set voice aria"
         ok = set_voice_by_name(target)
         return None, ("Voice set." if ok else "Could not find that voice. Try 'list voices'.")
 
@@ -214,7 +216,7 @@ def handle_text(profile, text: str):
         beep()
         return None, "(beep)"
 
-    # NEW: direct main-thread speech (diagnostic)
+    # NEW: direct speech test (blocking via worker)
     if low.startswith("speak direct "):
         msg = text[len("speak direct "):].strip()
         if msg:
@@ -222,7 +224,6 @@ def handle_text(profile, text: str):
             return None, "(direct spoke via worker)" if ok else "Direct speak (worker) timed out."
         else:
             return None, "What should I speak directly?"
-
 
     # Normal queued speech (uses background TTS worker)
     if low.startswith("speak "):
@@ -269,7 +270,7 @@ def handle_text(profile, text: str):
 
     # Recurring daily: "remind me every day at <time> to <task>"
     if low.startswith("remind me every day at"):
-        parts = t.split(" ", 5)  # ['remind','me','every','day','at','<time> to <task>']
+        parts = t.split(" ", 5)
         if len(parts) < 6:
             return None, "Try: remind me every day at 8 am to take medicine"
         remainder = parts[5].strip()
@@ -286,10 +287,10 @@ def handle_text(profile, text: str):
         except Exception:
             return None, "I couldn't read that time. Try '8:30 pm', '7 am', or '19:45'."
 
-    # Recurring weekly: "remind me every <weekday> at <time> to <task>"
+    # Recurring weekly
     if low.startswith("remind me every ") and " at " in low and " to " in low:
         try:
-            after_every = t[16:]  # text after "remind me every "
+            after_every = t[16:]
             weekday, after_wd = after_every.split(" at ", 1)
             if " to " not in after_wd.lower():
                 raise ValueError()
@@ -302,11 +303,11 @@ def handle_text(profile, text: str):
             when = add_weekly_reminder(task, weekday_name, time_str)
             return None, f"Got it! I'll remind you every {weekday_name.capitalize()} at {when[-8:]} to: {task}"
         except Exception:
-            pass  # fall through to other parsers
+            pass
 
-    # Clock-time one-off: "remind me at <time> to <task>"
+    # Clock-time one-off
     if low.startswith("remind me at"):
-        parts = t.split(" ", 3)  # ["remind","me","at","<time> to <task>"]
+        parts = t.split(" ", 3)
         if len(parts) < 4:
             return None, "Try: remind me at 8:30 pm to take medicine"
         remainder = parts[3].strip()
@@ -323,9 +324,9 @@ def handle_text(profile, text: str):
         except Exception:
             return None, "I couldn't read that time. Try '8:30 pm', '7 am', or '19:45'."
 
-    # Timed relative: "remind me in <N> seconds/minutes to <task>"
+    # Timed relative
     if low.startswith("remind me in"):
-        parts = t.split(" ", 4)  # ["remind","me","in","10","seconds to <task>"]
+        parts = t.split(" ", 4)
         if len(parts) < 5:
             return None, "Try: remind me in 10 seconds to drink water"
         number_str = parts[3].strip()
@@ -384,6 +385,7 @@ def handle_text(profile, text: str):
         return None, f"I hear you, {name}. Tell me more!"
     return None, "Hmm, I don't fully understand yet, but I'm learning! 🤓"
 
+
 # ---------- Program starts here ----------
 print("Loading your profile...")
 profile = load_profile()
@@ -391,7 +393,6 @@ profile = load_profile()
 # Start TTS worker early so greetings + reminders can speak
 if is_available():
     start_worker(default_rate=get_voice_rate(profile), voice_hint="zira")
-
 
 # Background checker prints reminders when due (and re-schedules recurring ones)
 def on_reminder(task):
@@ -403,14 +404,25 @@ def on_reminder(task):
     if get_voice_enabled(profile) and is_available():
         speak("Reminder! " + task, rate=get_voice_rate(profile))
     print("You: ", end="", flush=True)
-reminder_checker(on_reminder)
 
+reminder_checker(on_reminder)
 
 greet(profile)
 
 while True:
+    # PTT: if enabled and user just presses Enter → listen 5s
     user_input = input("You: ")
-    action, message = handle_text(profile, user_input)
+    if ptt_enabled and user_input.strip() == "":
+        print("(PTT listening 5s...)")
+        said = transcribe_online(seconds=5)
+        if said:
+            print(f"You (voice): {said}")
+            action, message = handle_text(profile, said)
+        else:
+            action, message = None, "I didn’t catch that."
+    else:
+        action, message = handle_text(profile, user_input)
+
     if action == "quit":
         say(profile, message)
         break
