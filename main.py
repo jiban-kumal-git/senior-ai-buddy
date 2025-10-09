@@ -1,4 +1,4 @@
-# --- Day 12 (+ Day 7–14 features) with robust TTS worker, STT, and Push-to-Talk ---
+# --- Senior AI Buddy: Day 7–15 (TTS + Reminders + Online STT + PTT + Conversation Memory) ---
 
 from modules.memory import (
     load_profile, save_profile,
@@ -22,16 +22,29 @@ from modules.voice import (
 )
 
 from modules.stt import (
-    transcribe_offline, transcribe_online, has_offline_model
+    transcribe_offline, transcribe_online, has_offline_model,
+    list_input_devices, set_input_device, mic_test
 )
 
-# ---- Global flags ----
+# ---- Global flags / memory ----
 ptt_enabled = False
+conversation_history = []   # store (who, text), keep last 20 entries
+
+
+def remember(who: str, text: str):
+    """Append to conversation log and trim length."""
+    global conversation_history
+    if text is None:
+        return
+    conversation_history.append((who, text))
+    if len(conversation_history) > 20:
+        conversation_history = conversation_history[-20:]
 
 
 def say(profile, text):
-    """Print + speak if voice is enabled and engine available."""
+    """Print + speak if voice is enabled and engine available, and remember."""
     print("Buddy:", text)
+    remember("Buddy", text)
     if get_voice_enabled(profile) and is_available():
         speak(text, rate=get_voice_rate(profile))
 
@@ -39,18 +52,20 @@ def say(profile, text):
 def greet(profile):
     name = get_name(profile)
     if name:
-        hello = f"👋 Hi {name}! I'm Senior AI Buddy. Type 'help' for options. (type 'quit' to exit)\n"
+        hello = f" Hi {name}! I'm Senior AI Buddy. Type 'help' for options. (type 'quit' to exit)\n"
     else:
-        hello = "👋 Hi! I'm Senior AI Buddy. I don't know your name yet."
+        hello = " Hi! I'm Senior AI Buddy. I don't know your name yet."
     print(hello)
+    remember("Buddy", hello)
     if get_voice_enabled(profile) and is_available():
         speak(hello, rate=get_voice_rate(profile))
 
     if not name:
         name_input = input("What should I call you? ")
+        remember("You", name_input)
         if name_input.strip():
             set_name(profile, name_input)
-            say(profile, f"Nice to meet you, {get_name(profile)}! I'll remember that. 😊")
+            say(profile, f"Nice to meet you, {get_name(profile)}! I'll remember that. ")
         else:
             say(profile, "No worries, we can set your name later. Type: My name is <YourName>")
 
@@ -77,21 +92,26 @@ Commands you can try:
     - clear reminders
 
   Voice:
-    - voice on
-    - voice off
+    - voice on / voice off
     - set voice rate 150          (range ~100-250)
     - list voices
-    - set voice aria              (or zira/jenny/sara, etc.)
+    - set voice aria              (or jenny/sara/...)
     - speak <anything>
+    - speak direct <anything>     (blocking test)
     - beep
 
   Speech-to-Text:
-    - listen-online 5             (record N seconds & transcribe)
+    - listen-online 5             (record N seconds & transcribe online)
 
   Push-to-Talk:
-    - ptt on                      (then press Enter with empty input to talk 5s)
+    - ptt on                      (then press Enter empty to talk 5s)
     - ptt off
 
+  Microphone:
+    - audio devices               (list input devices)
+    - set input device <index>    (pick your mic)
+    - mic test 3                  (records 3s to mic_test.wav)
+    
   Other:
     - hello / namaste / tea / coffee
     - help
@@ -142,6 +162,39 @@ def handle_text(profile, text: str):
         ptt_enabled = False
         return None, "Push-to-talk mode DISABLED."
 
+    # ---- Microphone helpers (Day 14 improved) ----
+    if low == "audio devices":
+        devs = list_input_devices()
+        if not devs:
+            return None, "No input devices found."
+        out = ["Input devices:"]
+        for idx, name in devs:
+            out.append(f"  {idx}: {name}")
+        return None, "\n".join(out)
+
+    if low.startswith("set input device"):
+        parts = t.split()
+        if len(parts) >= 4:
+            try:
+                idx = int(parts[3])
+            except Exception:
+                return None, "Please give a device index number. Try: audio devices"
+            ok = set_input_device(idx)
+            return None, ("Mic input device set." if ok else "Invalid device index. Try: audio devices")
+        else:
+            return None, "Usage: set input device <index>"
+
+    if low.startswith("mic test"):
+        parts = t.split()
+        secs = 3
+        if len(parts) >= 3:
+            try:
+                secs = max(2, min(10, int(parts[2])))
+            except Exception:
+                pass
+        path = mic_test(seconds=secs)
+        return None, f"Mic test saved: {path}. Play it to check your voice level."
+
     # ---- Speech-to-Text (Day 13): ONLINE ----
     if low.startswith("listen-online"):
         parts = t.split()
@@ -151,22 +204,22 @@ def handle_text(profile, text: str):
                 secs = max(2, min(30, int(parts[1])))
             except Exception:
                 pass
-
         print(f"(listening online for {secs}s...)")
         said = transcribe_online(seconds=secs)
         if not said:
             return None, "I didn’t catch that (online). Try again or speak closer to the mic."
         print(f"You (voice): {said}")
+        # Route into normal text handling
+        remember("You", said)
         action2, msg2 = handle_text(profile, said)
         if action2 == "quit":
             return None, msg2
         return None, msg2
 
-    # Exit
+    # ---- System ----
     if low == "quit":
         return "quit", "Goodbye for now! Stay safe."
 
-    # Help & profile
     if low == "help":
         show_help()
         return None, None
@@ -178,7 +231,7 @@ def handle_text(profile, text: str):
         profile.clear(); profile.update(newp)
         return None, "Okay, I reset your profile to defaults."
 
-    # ---------------- Voice controls ----------------
+    # ---- Voice controls ----
     if low == "voice on":
         set_voice_enabled(profile, True)
         return None, "Voice turned ON."
@@ -216,7 +269,7 @@ def handle_text(profile, text: str):
         beep()
         return None, "(beep)"
 
-    # NEW: direct speech test (blocking via worker)
+    # Direct speech test (blocking via worker queue)
     if low.startswith("speak direct "):
         msg = text[len("speak direct "):].strip()
         if msg:
@@ -225,7 +278,7 @@ def handle_text(profile, text: str):
         else:
             return None, "What should I speak directly?"
 
-    # Normal queued speech (uses background TTS worker)
+    # Normal queued speech (background TTS worker)
     if low.startswith("speak "):
         msg = t[6:].strip()
         if msg:
@@ -238,10 +291,10 @@ def handle_text(profile, text: str):
         else:
             return None, "What should I speak?"
 
-    # ---------------- Memory setters ----------------
+    # ---- Profile setters ----
     if low.startswith("my name is"):
         set_name(profile, t[10:].strip())
-        return None, f"Nice to meet you, {get_name(profile)}! I'll remember your name. 😊"
+        return None, f"Nice to meet you, {get_name(profile)}! I'll remember your name. "
 
     if low.startswith("i like"):
         set_drink(profile, t[6:].strip())
@@ -249,26 +302,26 @@ def handle_text(profile, text: str):
 
     if low.startswith("my favorite food is"):
         set_food(profile, t[20:].strip())
-        return None, f"Got it! Favorite food: {get_food(profile)}. Saved. 🍽️"
+        return None, f"Got it! Favorite food: {get_food(profile)}. Saved. "
 
     if low.startswith("i eat"):
         set_food(profile, t[5:].strip())
         return None, f"Yum! I'll remember you eat {get_food(profile)}."
 
-    # ---------------- Memory queries ----------------
+    # ---- Profile queries ----
     if "what's my name" in low or "whats my name" in low:
         name = get_name(profile)
-        return None, (f"Your name is {name}, of course! 😉" if name else "Hmm, I don't know your name yet.")
+        return None, (f"Your name is {name}, of course!" if name else "Hmm, I don't know your name yet.")
     if "what's my drink" in low or "whats my drink" in low:
         drink = get_drink(profile)
-        return None, (f"You like {drink}, don't you? ☕" if drink else "You haven't told me your favorite drink yet.")
+        return None, (f"You like {drink}, don't you?" if drink else "You haven't told me your favorite drink yet.")
     if "what's my food" in low or "whats my food" in low:
         food = get_food(profile)
         return None, (f"Your favorite food is {food}." if food else "You haven't told me your favorite food yet.")
 
-    # ---------------- Reminders (Day 8/9/10/11) ----------------
+    # ---- Reminders ----
 
-    # Recurring daily: "remind me every day at <time> to <task>"
+    # Recurring daily
     if low.startswith("remind me every day at"):
         parts = t.split(" ", 5)
         if len(parts) < 6:
@@ -367,7 +420,7 @@ def handle_text(profile, text: str):
         clear_reminders()
         return None, "All reminders cleared."
 
-    # ---------------- Small talk ----------------
+    # ---- Small talk ----
     if "hello" in low:
         name = get_name(profile)
         return None, (f"Hello, {name}! How's your day going?" if name else "Hello there! How's your day going?")
@@ -379,28 +432,29 @@ def handle_text(profile, text: str):
     if "coffee" in low:
         return None, "Coffee will keep you energized!"
 
-    # Default fallback
+    # ---- Default fallback with conversation memory ----
     name = get_name(profile)
-    if name:
-        return None, f"I hear you, {name}. Tell me more!"
-    return None, "Hmm, I don't fully understand yet, but I'm learning! 🤓"
+    if name and conversation_history:
+        last_user_msgs = [m for m in conversation_history if m[0] == "You"]
+        if last_user_msgs:
+            recent = last_user_msgs[-1][1]
+            return None, f"I hear you, {name}. Earlier you said: '{recent}'. Do you want to talk more about that?"
+    return None, "Hmm, I don't fully understand yet, but I'm listening."
 
 
 # ---------- Program starts here ----------
 print("Loading your profile...")
 profile = load_profile()
 
-# Start TTS worker early so greetings + reminders can speak
+# Start TTS worker early so greetings + reminders can speak (hint a nice neural voice)
 if is_available():
-    start_worker(default_rate=get_voice_rate(profile), voice_hint="zira")
+    start_worker(default_rate=get_voice_rate(profile), voice_hint="sara")
 
-# Background checker prints reminders when due (and re-schedules recurring ones)
+# Background checker prints reminders when due (and can re-schedule recurring ones)
 def on_reminder(task):
     msg = f"⏰ Reminder: {task}"
     print(f"\n{msg}")
-    # audible cue
     beep()
-    # then TTS via worker
     if get_voice_enabled(profile) and is_available():
         speak("Reminder! " + task, rate=get_voice_rate(profile))
     print("You: ", end="", flush=True)
@@ -410,17 +464,24 @@ reminder_checker(on_reminder)
 greet(profile)
 
 while True:
+    try:
+        user_input = input("You: ")
+    except (EOFError, KeyboardInterrupt):
+        print("\nGoodbye!")
+        break
+
     # PTT: if enabled and user just presses Enter → listen 5s
-    user_input = input("You: ")
     if ptt_enabled and user_input.strip() == "":
         print("(PTT listening 5s...)")
         said = transcribe_online(seconds=5)
         if said:
             print(f"You (voice): {said}")
+            remember("You", said)
             action, message = handle_text(profile, said)
         else:
             action, message = None, "I didn’t catch that."
     else:
+        remember("You", user_input)
         action, message = handle_text(profile, user_input)
 
     if action == "quit":
