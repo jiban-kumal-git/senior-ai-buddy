@@ -7,8 +7,10 @@ PROFILE_PATH = os.path.join("data", "user_profile.json")
 DEFAULT_PROFILE = {
     "user_name": None,
     "favorite_drink": None,
-    "favorite_food": None
+    "favorite_food": None,
+    "notes": []   # <-- add this line
 }
+
 
 def load_profile():
     """Load user profile from JSON; create with defaults if missing/corrupt.
@@ -102,4 +104,34 @@ def set_voice_rate(profile, rate: int):
         r = 170
     profile["voice_rate"] = max(100, min(250, r))  # clamp: 100–250
     save_profile(profile)
+
+from datetime import datetime
+
+def get_notes(profile):
+    # Always return a list
+    notes = profile.get("notes")
+    if not isinstance(notes, list):
+        notes = []
+        profile["notes"] = notes
+        save_profile(profile)
+    return notes
+
+def add_note(profile, text: str):
+    text = (text or "").strip()
+    if not text:
+        return False
+    # store timestamped note; simple dict to allow future expansion
+    note = {
+        "text": text,
+        "added_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    notes = get_notes(profile)
+    notes.append(note)
+    save_profile(profile)
+    return True
+
+def clear_notes(profile):
+    profile["notes"] = []
+    save_profile(profile)
+    return True
 

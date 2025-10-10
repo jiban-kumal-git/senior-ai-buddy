@@ -7,7 +7,8 @@ from modules.memory import (
     get_food, set_food,
     reset_profile,
     get_voice_enabled, set_voice_enabled,
-    get_voice_rate, set_voice_rate
+    get_voice_rate, set_voice_rate,
+    get_notes, add_note, clear_notes
 )
 
 from modules.reminders import (
@@ -124,6 +125,13 @@ Commands you can try:
     - audio devices               (list input devices)
     - set input device <index>    (pick your mic)
     - mic test 3                  (records 3s to mic_test.wav)
+    
+  Notes:
+    - note that <text>
+    - my notes / show notes
+    - clear notes
+    - clear chat memory
+
     
   Other:
     - hello / namaste / tea / coffee
@@ -455,6 +463,34 @@ def handle_text(profile, text: str):
         return None, "Yay! I'm glad to hear you're happy. Let's celebrate that energy!"
     if mood == "angry":
         return None, "It sounds like you're upset. Want to talk about what's bothering you?"
+    
+        # ---- Notes (Day 17) ----
+    if low.startswith("note that "):
+        content = text[len("note that "):].strip()
+        if not content:
+            return None, "What should I note?"
+        ok = add_note(profile, content)
+        return None, ("Noted. 📘" if ok else "Couldn't save that note.")
+
+    if low in ("my notes", "show notes", "list notes"):
+        notes = get_notes(profile)
+        if not notes:
+            return None, "You have no notes yet."
+        lines = ["Your notes:"]
+        for i, n in enumerate(notes, start=1):
+            lines.append(f"  {i}. {n['text']}  ({n['added_at']})")
+        return None, "\n".join(lines)
+
+    if low == "clear notes":
+        clear_notes(profile)
+        return None, "All notes cleared."
+
+    if low == "clear chat memory":
+        # wipes short-term conversation history (Day 15)
+        global conversation_history
+        conversation_history = []
+        return None, "Chat memory cleared."
+
 
     # ---- Default fallback with conversation memory ----
     name = get_name(profile)
