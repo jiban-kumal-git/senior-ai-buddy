@@ -1,7 +1,7 @@
 {
   "user_name": "Jiban",
-  "favorite_drink": null,
-  "favorite_food": null,
+  "favorite_drink": "water.",
+  "favorite_food": "momo",
   "voice_enabled": true,
   "voice_rate": 170
 }
