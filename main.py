@@ -26,6 +26,19 @@ from modules.stt import (
     list_input_devices, set_input_device, mic_test
 )
 
+def detect_emotion(text: str) -> str:
+    low = text.lower()
+    if any(w in low for w in ["tired", "sleepy", "exhausted", "fatigued"]):
+        return "tired"
+    if any(w in low for w in ["sad", "upset", "lonely", "depressed"]):
+        return "sad"
+    if any(w in low for w in ["happy", "excited", "great", "good mood", "joy"]):
+        return "happy"
+    if any(w in low for w in ["angry", "mad", "frustrated", "annoyed"]):
+        return "angry"
+    return ""
+
+
 # ---- Global flags / memory ----
 ptt_enabled = False
 conversation_history = []   # store (who, text), keep last 20 entries
@@ -426,11 +439,22 @@ def handle_text(profile, text: str):
         return None, (f"Hello, {name}! How's your day going?" if name else "Hello there! How's your day going?")
     if "namaste" in low:
         name = get_name(profile)
-        return None, (f"Namaste, {name}! I'm happy to chat with you." if name else "Namaste 🙏 I'm happy to chat with you.")
+        return None, (f"Namaste, {name}! I'm happy to chat with you." if name else "Namaste!I'm happy to chat with you.")
     if "tea" in low:
         return None, "Ah, tea is always a good choice."
     if "coffee" in low:
         return None, "Coffee will keep you energized!"
+
+      # ---- Emotion detection (Day 16) ----
+    mood = detect_emotion(t)  # use the current user text
+    if mood == "tired":
+        return None, "You sound tired. Maybe a little rest or tea would help."
+    if mood == "sad":
+        return None, "I'm sorry you're feeling down. Remember, you're not alone — I'm here with you."
+    if mood == "happy":
+        return None, "Yay! I'm glad to hear you're happy. Let's celebrate that energy!"
+    if mood == "angry":
+        return None, "It sounds like you're upset. Want to talk about what's bothering you?"
 
     # ---- Default fallback with conversation memory ----
     name = get_name(profile)
@@ -439,7 +463,9 @@ def handle_text(profile, text: str):
         if last_user_msgs:
             recent = last_user_msgs[-1][1]
             return None, f"I hear you, {name}. Earlier you said: '{recent}'. Do you want to talk more about that?"
+
     return None, "Hmm, I don't fully understand yet, but I'm listening."
+
 
 
 # ---------- Program starts here ----------
