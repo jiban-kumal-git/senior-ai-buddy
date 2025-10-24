@@ -1,4 +1,6 @@
-# --- Senior AI Buddy: Day 7–15 (TTS + Reminders + Online STT + PTT + Conversation Memory) ---
+# --- Senior AI Buddy: Day 7–18 (TTS + Reminders + STT + PTT + Memory + Emotions + Notes + Contacts/Notify) ---
+
+import re
 
 from modules.memory import (
     load_profile, save_profile,
@@ -8,7 +10,11 @@ from modules.memory import (
     reset_profile,
     get_voice_enabled, set_voice_enabled,
     get_voice_rate, set_voice_rate,
-    get_notes, add_note, clear_notes
+    # Day 17
+    get_notes, add_note, clear_notes,
+    # Day 18
+    get_contacts, add_contact, remove_contact_like, find_contact,
+    clear_contacts 
 )
 
 from modules.reminders import (
@@ -23,27 +29,19 @@ from modules.voice import (
 )
 
 from modules.stt import (
-    transcribe_offline, transcribe_online, has_offline_model,
+    transcribe_online, transcribe_offline, has_offline_model,
     list_input_devices, set_input_device, mic_test
 )
 
-def detect_emotion(text: str) -> str:
-    low = text.lower()
-    if any(w in low for w in ["tired", "sleepy", "exhausted", "fatigued"]):
-        return "tired"
-    if any(w in low for w in ["sad", "upset", "lonely", "depressed"]):
-        return "sad"
-    if any(w in low for w in ["happy", "excited", "great", "good mood", "joy"]):
-        return "happy"
-    if any(w in low for w in ["angry", "mad", "frustrated", "annoyed"]):
-        return "angry"
-    return ""
-
+# Day 18 notifications
+from modules.notify import send_message, channel_available, get_config
 
 # ---- Global flags / memory ----
 ptt_enabled = False
-conversation_history = []   # store (who, text), keep last 20 entries
+conversation_history = []   # (who, text), last 20 entries
 
+
+# ========= Helpers =========
 
 def remember(who: str, text: str):
     """Append to conversation log and trim length."""
@@ -79,14 +77,28 @@ def greet(profile):
         remember("You", name_input)
         if name_input.strip():
             set_name(profile, name_input)
-            say(profile, f"Nice to meet you, {get_name(profile)}! I'll remember that. ")
+            say(profile, f"Nice to meet you, {get_name(profile)}! I'll remember that.")
         else:
             say(profile, "No worries, we can set your name later. Type: My name is <YourName>")
+
+
+def detect_emotion(text: str) -> str:
+    low = text.lower()
+    if any(w in low for w in ["tired", "sleepy", "exhausted", "fatigued"]):
+        return "tired"
+    if any(w in low for w in ["sad", "upset", "lonely", "depressed"]):
+        return "sad"
+    if any(w in low for w in ["happy", "excited", "great", "good mood", "joy"]):
+        return "happy"
+    if any(w in low for w in ["angry", "mad", "frustrated", "annoyed"]):
+        return "angry"
+    return ""
 
 
 def show_help():
     print("""
 Commands you can try:
+
   Profile & Memory:
     - My name is <YourName>
     - I like <drink>
@@ -94,6 +106,12 @@ Commands you can try:
     - What's my name / drink / food
     - profile
     - reset my profile
+
+  Notes:
+    - note that <text>
+    - my notes / show notes / list notes
+    - clear notes
+    - clear chat memory     (clears short-term conversation history)
 
   Reminders:
     - remind me to <task>
@@ -125,14 +143,15 @@ Commands you can try:
     - audio devices               (list input devices)
     - set input device <index>    (pick your mic)
     - mic test 3                  (records 3s to mic_test.wav)
-    
-  Notes:
-    - note that <text>
-    - my notes / show notes
-    - clear notes
-    - clear chat memory
 
-    
+  Contacts & Notify:
+    - add contact <Name> [phone <num>] [email <addr>] [relation <rel>]
+    - list contacts
+    - remove contact <Name>
+    - notify <Name> <message>
+    - emergency <message> to <Name>
+    - test notify <channel>       (console | email | sms | whatsapp)
+
   Other:
     - hello / namaste / tea / coffee
     - help
@@ -168,14 +187,42 @@ def render_reminders():
     return "\n".join(lines)
 
 
+def parse_add_contact_cmd(text: str):
+    """
+    Parse: add contact <Name> [phone <num>] [email <addr>] [relation <rel>]
+    Allows spaces in relation; email is one token; phone spaces are stripped.
+    """
+    m = re.match(
+        r"add\s+contact\s+(?P<name>.+?)(?:\s+phone\s+(?P<phone>.+?))?(?:\s+email\s+(?P<email>\S+))?(?:\s+relation\s+(?P<relation>.+))?$",
+        text.strip(),
+        flags=re.IGNORECASE,
+    )
+    if not m:
+        return None, None, None, None
+    name = (m.group("name") or "").strip()
+    phone = (m.group("phone") or "").strip()
+    email = (m.group("email") or "").strip()
+    relation = (m.group("relation") or "").strip()
+    if phone:
+        phone = phone.replace(" ", "")
+    if not email:
+        email = None
+    if not relation:
+        relation = None
+    if not name:
+        return None, None, None, None
+    return name, (phone or None), email, relation
+
+
+# ========= Core text handler =========
+
 def handle_text(profile, text: str):
     global ptt_enabled
 
-    # Always keep these first!
     t = text.strip()
     low = t.lower()
 
-    # ---- Push-to-Talk (Day 14) ----
+    # ---- Push-to-Talk toggle ----
     if low == "ptt on":
         ptt_enabled = True
         return None, "Push-to-talk mode ENABLED. Just press Enter to speak."
@@ -183,7 +230,7 @@ def handle_text(profile, text: str):
         ptt_enabled = False
         return None, "Push-to-talk mode DISABLED."
 
-    # ---- Microphone helpers (Day 14 improved) ----
+    # ---- Microphone helpers ----
     if low == "audio devices":
         devs = list_input_devices()
         if not devs:
@@ -216,7 +263,7 @@ def handle_text(profile, text: str):
         path = mic_test(seconds=secs)
         return None, f"Mic test saved: {path}. Play it to check your voice level."
 
-    # ---- Speech-to-Text (Day 13): ONLINE ----
+    # ---- Speech-to-Text (online) ----
     if low.startswith("listen-online"):
         parts = t.split()
         secs = 5
@@ -230,7 +277,6 @@ def handle_text(profile, text: str):
         if not said:
             return None, "I didn’t catch that (online). Try again or speak closer to the mic."
         print(f"You (voice): {said}")
-        # Route into normal text handling
         remember("You", said)
         action2, msg2 = handle_text(profile, said)
         if action2 == "quit":
@@ -240,7 +286,6 @@ def handle_text(profile, text: str):
     # ---- System ----
     if low == "quit":
         return "quit", "Goodbye for now! Stay safe."
-
     if low == "help":
         show_help()
         return None, None
@@ -256,11 +301,9 @@ def handle_text(profile, text: str):
     if low == "voice on":
         set_voice_enabled(profile, True)
         return None, "Voice turned ON."
-
     if low == "voice off":
         set_voice_enabled(profile, False)
         return None, "Voice turned OFF."
-
     if low.startswith("set voice rate"):
         parts = low.split()
         try:
@@ -269,28 +312,23 @@ def handle_text(profile, text: str):
             return None, f"Voice rate set to {get_voice_rate(profile)}."
         except Exception:
             return None, "Please provide a number, e.g., set voice rate 170"
-
     if low == "list voices":
-        voices = list_voices()  # Edge TTS: list of (ShortName, Locale, Gender)
+        voices = list_voices()  # Edge TTS voices
         if not voices:
             return None, "No voices available."
         msg = ["Available voices:"]
         for i, (short, locale, gender) in enumerate(voices, start=1):
             msg.append(f"  {i}. {short}  [{locale}, {gender}]")
         return None, "\n".join(msg)
-
     if low.startswith("set voice "):
         target = t[10:].strip()
         if not target:
             return None, "Please provide part of a voice name, e.g., set voice aria"
         ok = set_voice_by_name(target)
         return None, ("Voice set." if ok else "Could not find that voice. Try 'list voices'.")
-
     if low == "beep":
         beep()
         return None, "(beep)"
-
-    # Direct speech test (blocking via worker queue)
     if low.startswith("speak direct "):
         msg = text[len("speak direct "):].strip()
         if msg:
@@ -298,8 +336,6 @@ def handle_text(profile, text: str):
             return None, "(direct spoke via worker)" if ok else "Direct speak (worker) timed out."
         else:
             return None, "What should I speak directly?"
-
-    # Normal queued speech (background TTS worker)
     if low.startswith("speak "):
         msg = t[6:].strip()
         if msg:
@@ -312,37 +348,126 @@ def handle_text(profile, text: str):
         else:
             return None, "What should I speak?"
 
-    # ---- Profile setters ----
-    if low.startswith("my name is"):
-        set_name(profile, t[10:].strip())
-        return None, f"Nice to meet you, {get_name(profile)}! I'll remember your name. "
+    # ---- Day 17: Notes ----
+    if low.startswith("note that "):
+        content = text[len("note that "):].strip()
+        if not content:
+            return None, "What should I note?"
+        ok = add_note(profile, content)
+        return None, ("Noted. 📘" if ok else "Couldn't save that note.")
+    if low in ("my notes", "show notes", "list notes"):
+        notes = get_notes(profile)
+        if not notes:
+            return None, "You have no notes yet."
+        lines = ["Your notes:"]
+        for i, n in enumerate(notes, start=1):
+            lines.append(f"  {i}. {n['text']}  ({n['added_at']})")
+        return None, "\n".join(lines)
+    if low == "clear notes":
+        clear_notes(profile)
+        return None, "All notes cleared."
+    if low == "clear chat memory":
+        global conversation_history
+        conversation_history = []
+        return None, "Chat memory cleared."
 
-    if low.startswith("i like"):
-        set_drink(profile, t[6:].strip())
-        return None, f"Cool! I'll remember you like {get_drink(profile)}."
+    # ---- Day 18: Contacts ----
+    if low.startswith("add contact "):
+        name, phone, email, relation = parse_add_contact_cmd(t)
+        if not name:
+            return None, "Usage: add contact <Name> [phone <num>] [email <addr>] [relation <rel>]"
+        ok = add_contact(profile, name=name, phone=phone, email=email, relation=relation)
+        return None, ("Contact saved." if ok else "Couldn't save contact.")
 
-    if low.startswith("my favorite food is"):
-        set_food(profile, t[20:].strip())
-        return None, f"Got it! Favorite food: {get_food(profile)}. Saved. "
+    if low == "list contacts":
+        cs = get_contacts(profile)
+        if not cs:
+            return None, "No contacts yet. Add one with: add contact Mom phone +614... email mom@... relation mother"
+        lines = ["Your contacts:"]
+        for i, c in enumerate(cs, start=1):
+            name = c.get("name", "—")
+            phone = c.get("phone", "—")
+            email = c.get("email", "—")
+            relation = c.get("relation", "—")
+            lines.append(f"  {i}. {name}  phone={phone}  email={email}  relation={relation}")
+        return None, "\n".join(lines)
 
-    if low.startswith("i eat"):
-        set_food(profile, t[5:].strip())
-        return None, f"Yum! I'll remember you eat {get_food(profile)}."
+    if low.startswith("remove contact like "):
+        pat = t[len("remove contact like "):].strip()
+        ok = remove_contact_like(profile, pat)
+        return None, ("Removed any matching contacts." if ok else "No matching contact.")
 
-    # ---- Profile queries ----
-    if "what's my name" in low or "whats my name" in low:
-        name = get_name(profile)
-        return None, (f"Your name is {name}, of course!" if name else "Hmm, I don't know your name yet.")
-    if "what's my drink" in low or "whats my drink" in low:
-        drink = get_drink(profile)
-        return None, (f"You like {drink}, don't you?" if drink else "You haven't told me your favorite drink yet.")
-    if "what's my food" in low or "whats my food" in low:
-        food = get_food(profile)
-        return None, (f"Your favorite food is {food}." if food else "You haven't told me your favorite food yet.")
+    if low == "clear contacts":
+        ok = clear_contacts(profile)
+        return None, ("All contacts cleared." if ok else "Couldn't clear contacts.")
+
+    # ---- Day 18: Notifications ----
+    # notify <Name> <message>
+    if low.startswith("notify "):
+        rest = text[len("notify "):].strip()
+        parts = rest.split(" ", 1)
+        if len(parts) < 2:
+            return None, "Usage: notify <Name> <message>"
+        who, msg = parts[0].strip(), parts[1].strip()
+        c = find_contact(profile, who)
+        if not c:
+            return None, f"I don't see a contact named {who}. Add one with: add contact {who} phone <num> email <addr>"
+        cfg = get_config()
+        ch = cfg.get("DEFAULT_CHANNEL", "console").lower()
+        target = None
+        if ch == "email" and c.get("email"):
+            target = c["email"]
+        elif ch == "sms" and c.get("phone"):
+            target = c["phone"]
+        elif ch == "whatsapp" and c.get("phone"):
+            target = c["phone"]
+        else:
+            # fallback: email > sms > whatsapp > console
+            if c.get("email") and channel_available("email"):
+                ch, target = "email", c["email"]
+            elif c.get("phone") and channel_available("sms"):
+                ch, target = "sms", c["phone"]
+            elif c.get("phone") and channel_available("whatsapp"):
+                ch, target = "whatsapp", c["phone"]
+            else:
+                ch, target = "console", c.get("name") or who
+        ok = send_message(ch, target, msg)
+        return None, (f"Notified {who} via {ch}." if ok else f"Failed to notify {who} via {ch}.")
+
+    # emergency <message> to <Name>
+    if low.startswith("emergency "):
+        rest = text[len("emergency "):].strip()
+        if " to " not in rest.lower():
+            return None, "Usage: emergency <message> to <Name>"
+        msg_part, who_part = rest.split(" to ", 1)
+        who = who_part.strip()
+        msg = f"EMERGENCY: {msg_part.strip()}"
+        c = find_contact(profile, who)
+        if not c:
+            return None, f"I don't see a contact named {who}."
+        # prefer SMS for emergency, then WhatsApp, then email, then console
+        if c.get("phone") and channel_available("sms"):
+            ok = send_message("sms", c["phone"], msg)
+            return None, ("Emergency SMS sent." if ok else "Failed to send emergency SMS.")
+        if c.get("phone") and channel_available("whatsapp"):
+            ok = send_message("whatsapp", c["phone"], msg)
+            return None, ("Emergency WhatsApp sent." if ok else "Failed to send emergency WhatsApp.")
+        if c.get("email") and channel_available("email"):
+            ok = send_message("email", c["email"], msg, subject="EMERGENCY")
+            return None, ("Emergency email sent." if ok else "Failed to send emergency email.")
+        ok = send_message("console", who, msg)
+        return None, ("Emergency console notify shown." if ok else "Couldn't notify.")
+
+    # test notify <channel>
+    if low.startswith("test notify "):
+        ch = t[len("test notify "):].strip().lower()
+        if ch not in ("console", "email", "sms", "whatsapp"):
+            return None, "Channel must be console, email, sms, or whatsapp."
+        target = "Console" if ch == "console" else ("demo@example.com" if ch == "email" else "+10000000000")
+        ok = send_message(ch, target, "Test message from Senior AI Buddy.")
+        return None, ("Test sent." if ok else "Test failed.")
 
     # ---- Reminders ----
-
-    # Recurring daily
     if low.startswith("remind me every day at"):
         parts = t.split(" ", 5)
         if len(parts) < 6:
@@ -361,7 +486,6 @@ def handle_text(profile, text: str):
         except Exception:
             return None, "I couldn't read that time. Try '8:30 pm', '7 am', or '19:45'."
 
-    # Recurring weekly
     if low.startswith("remind me every ") and " at " in low and " to " in low:
         try:
             after_every = t[16:]
@@ -379,7 +503,6 @@ def handle_text(profile, text: str):
         except Exception:
             pass
 
-    # Clock-time one-off
     if low.startswith("remind me at"):
         parts = t.split(" ", 3)
         if len(parts) < 4:
@@ -398,7 +521,6 @@ def handle_text(profile, text: str):
         except Exception:
             return None, "I couldn't read that time. Try '8:30 pm', '7 am', or '19:45'."
 
-    # Timed relative
     if low.startswith("remind me in"):
         parts = t.split(" ", 4)
         if len(parts) < 5:
@@ -425,7 +547,6 @@ def handle_text(profile, text: str):
         else:
             return None, "Please specify seconds or minutes. Example: remind me in 2 minutes to drink water"
 
-    # Simple text reminder
     if low.startswith("remind me to"):
         task = t[11:].strip()
         if task:
@@ -434,7 +555,6 @@ def handle_text(profile, text: str):
         else:
             return None, "Remind you to… what? Please say the task."
 
-    # Show/Clear reminders
     if low == "show reminders":
         return None, render_reminders()
     if low == "clear reminders":
@@ -453,8 +573,8 @@ def handle_text(profile, text: str):
     if "coffee" in low:
         return None, "Coffee will keep you energized!"
 
-      # ---- Emotion detection (Day 16) ----
-    mood = detect_emotion(t)  # use the current user text
+    # ---- Emotion-aware replies (Day 16) ----
+    mood = detect_emotion(t)
     if mood == "tired":
         return None, "You sound tired. Maybe a little rest or tea would help."
     if mood == "sad":
@@ -463,34 +583,6 @@ def handle_text(profile, text: str):
         return None, "Yay! I'm glad to hear you're happy. Let's celebrate that energy!"
     if mood == "angry":
         return None, "It sounds like you're upset. Want to talk about what's bothering you?"
-    
-        # ---- Notes (Day 17) ----
-    if low.startswith("note that "):
-        content = text[len("note that "):].strip()
-        if not content:
-            return None, "What should I note?"
-        ok = add_note(profile, content)
-        return None, ("Noted. 📘" if ok else "Couldn't save that note.")
-
-    if low in ("my notes", "show notes", "list notes"):
-        notes = get_notes(profile)
-        if not notes:
-            return None, "You have no notes yet."
-        lines = ["Your notes:"]
-        for i, n in enumerate(notes, start=1):
-            lines.append(f"  {i}. {n['text']}  ({n['added_at']})")
-        return None, "\n".join(lines)
-
-    if low == "clear notes":
-        clear_notes(profile)
-        return None, "All notes cleared."
-
-    if low == "clear chat memory":
-        # wipes short-term conversation history (Day 15)
-        global conversation_history
-        conversation_history = []
-        return None, "Chat memory cleared."
-
 
     # ---- Default fallback with conversation memory ----
     name = get_name(profile)
@@ -503,8 +595,7 @@ def handle_text(profile, text: str):
     return None, "Hmm, I don't fully understand yet, but I'm listening."
 
 
-
-# ---------- Program starts here ----------
+# ========= Program starts here =========
 print("Loading your profile...")
 profile = load_profile()
 
@@ -512,7 +603,7 @@ profile = load_profile()
 if is_available():
     start_worker(default_rate=get_voice_rate(profile), voice_hint="sara")
 
-# Background checker prints reminders when due (and can re-schedule recurring ones)
+# Reminder callback
 def on_reminder(task):
     msg = f"⏰ Reminder: {task}"
     print(f"\n{msg}")
@@ -521,6 +612,7 @@ def on_reminder(task):
         speak("Reminder! " + task, rate=get_voice_rate(profile))
     print("You: ", end="", flush=True)
 
+# Kick off background reminder checker
 reminder_checker(on_reminder)
 
 greet(profile)
@@ -532,7 +624,7 @@ while True:
         print("\nGoodbye!")
         break
 
-    # PTT: if enabled and user just presses Enter → listen 5s
+    # Push-to-talk: Enter on empty line → listen 5s
     if ptt_enabled and user_input.strip() == "":
         print("(PTT listening 5s...)")
         said = transcribe_online(seconds=5)

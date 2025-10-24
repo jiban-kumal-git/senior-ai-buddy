@@ -3,5 +3,16 @@
   "favorite_drink": "water.",
   "favorite_food": "momo",
   "voice_enabled": true,
-  "voice_rate": 170
+  "voice_rate": 170,
+  "notes": [
+    {
+      "text": "my doctor is Dr. smith",
+      "added_at": "2025-10-10 15:48:22"
+    },
+    {
+      "text": "appointment on Sunday at 10 am",
+      "added_at": "2025-10-10 15:49:02"
+    }
+  ],
+  "contacts": []
 }

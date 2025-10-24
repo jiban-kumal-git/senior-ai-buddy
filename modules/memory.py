@@ -8,7 +8,8 @@ DEFAULT_PROFILE = {
     "user_name": None,
     "favorite_drink": None,
     "favorite_food": None,
-    "notes": []   # <-- add this line
+    "notes": [],
+    "contacts": []
 }
 
 
@@ -134,4 +135,52 @@ def clear_notes(profile):
     profile["notes"] = []
     save_profile(profile)
     return True
+
+def get_contacts(profile):
+    contacts = profile.get("contacts")
+    if not isinstance(contacts, list):
+        contacts = []
+        profile["contacts"] = contacts
+        save_profile(profile)
+    return contacts
+
+def add_contact(profile, name: str, phone: str | None = None, email: str | None = None, relation: str | None = None):
+    name = (name or "").strip()
+    if not name:
+        return False
+    contacts = get_contacts(profile)
+    # replace if same name exists
+    for c in contacts:
+        if c.get("name","").lower() == name.lower():
+            c.update({"phone": phone, "email": email, "relation": relation})
+            save_profile(profile)
+            return True
+    contacts.append({"name": name, "phone": phone, "email": email, "relation": relation})
+    save_profile(profile)
+    return True
+
+def remove_contact_like(profile, pattern: str):
+    pat = (pattern or "").strip().lower()
+    if not pat:
+        return False
+    contacts = get_contacts(profile)
+    new_list = [c for c in contacts if pat not in str(c.get("name","")).lower()]
+    if len(new_list) == len(contacts):
+        return False
+    profile["contacts"] = new_list
+    save_profile(profile)
+    return True
+
+def find_contact(profile, name: str):
+    name = (name or "").strip()
+    for c in get_contacts(profile):
+        if c.get("name","").lower() == name.lower():
+            return c
+    return None
+
+def clear_contacts(profile):
+    profile["contacts"] = []
+    save_profile(profile)
+    return True
+
 

@@ -4,3 +4,6 @@ sounddevice
 SpeechRecognition
 numpy
 vosk        # optional (only if you’ll use offline STT later)
+
+python-dotenv
+twilio
